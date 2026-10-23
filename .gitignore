@@ -8,3 +8,9 @@ data/bulk-tax-documents/
 .env
 .env.local
 .env.*.local
+
+# Code editor configs
+.gram
+
+# Temp files
+tmp/
