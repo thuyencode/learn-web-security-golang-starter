@@ -14,3 +14,4 @@ fix:
 	golangci-lint run --fix
 clean:
 	go clean
+	rm -rf tmp
