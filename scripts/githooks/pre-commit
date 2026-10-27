@@ -3,7 +3,7 @@
 go_files=$(git diff --name-only --cached | grep .go)
 
 if [ -n "$go_files" ]; then
-    make fix
+    golangci-lint run --fix $go_files
 fi
 
 # Exclude deleted files from commit
