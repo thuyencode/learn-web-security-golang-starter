@@ -12,7 +12,10 @@ const CookieName = "session_id"
 
 const recentAuthenticationWindow = 10 * time.Minute
 
-func Current(request *http.Request, accountStore *accounts.Store) (accounts.CurrentSession, bool, error) {
+func Current(
+	request *http.Request,
+	accountStore *accounts.Store,
+) (accounts.CurrentSession, bool, error) {
 	cookie, err := request.Cookie(CookieName)
 	if err != nil {
 		return accounts.CurrentSession{}, false, nil
@@ -20,11 +23,20 @@ func Current(request *http.Request, accountStore *accounts.Store) (accounts.Curr
 	return accountStore.CurrentSession(request.Context(), cookie.Value)
 }
 
-func Require(responseWriter http.ResponseWriter, request *http.Request, accountStore *accounts.Store) (accounts.CurrentSession, bool, error) {
+func Require(
+	responseWriter http.ResponseWriter,
+	request *http.Request,
+	accountStore *accounts.Store,
+) (accounts.CurrentSession, bool, error) {
 	return RequireWithReturnTo(responseWriter, request, accountStore, "")
 }
 
-func RequireWithReturnTo(responseWriter http.ResponseWriter, request *http.Request, accountStore *accounts.Store, returnTo string) (accounts.CurrentSession, bool, error) {
+func RequireWithReturnTo(
+	responseWriter http.ResponseWriter,
+	request *http.Request,
+	accountStore *accounts.Store,
+	returnTo string,
+) (accounts.CurrentSession, bool, error) {
 	currentSession, found, err := Current(request, accountStore)
 	if err != nil || found {
 		return currentSession, found, err
@@ -46,14 +58,16 @@ func HasRecentAuthentication(current accounts.CurrentSession, now time.Time) boo
 	if err != nil {
 		return false
 	}
-	return !authenticatedAt.After(now) && !authenticatedAt.Before(now.Add(-recentAuthenticationWindow))
+	return !authenticatedAt.After(now) &&
+		!authenticatedAt.Before(now.Add(-recentAuthenticationWindow))
 }
 
 func SetCookie(responseWriter http.ResponseWriter, session accounts.Session) {
 	http.SetCookie(responseWriter, &http.Cookie{
-		Name:  CookieName,
-		Value: session.Token,
-		Path:  "/",
+		Name:    CookieName,
+		Value:   session.Token,
+		Expires: session.ExpiresAt,
+		Path:    "/",
 	})
 }
 
