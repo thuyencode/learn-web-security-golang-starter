@@ -1,5 +1,7 @@
 # Bearly Secure
 
+Note: The original code may use AI/LLM assistance, but mine doesn't.
+
 Bearly Secure is the intentionally vulnerable starter app for Learn Web Security in Go. It's a tiny plushie shop built with Go, `net/http`, and SQLite.
 
 > [!IMPORTANT]
