@@ -10,6 +10,7 @@ import (
 
 	"github.com/bootdotdev/learn-web-security/internal/accounts"
 	"github.com/bootdotdev/learn-web-security/internal/auth/mfa"
+	"github.com/bootdotdev/learn-web-security/internal/auth/passwords"
 	"github.com/bootdotdev/learn-web-security/internal/auth/sessions"
 	"github.com/bootdotdev/learn-web-security/internal/httpx"
 	"github.com/bootdotdev/learn-web-security/internal/logging"
@@ -91,8 +92,8 @@ func (handler *Handler) UpdateEmail(responseWriter http.ResponseWriter, request 
 	if !ok || !handler.verifyCSRF(responseWriter, request, current.Session.CSRFToken) {
 		return
 	}
-	email, emailErr := httpx.FormValue(request, "email")
-	if emailErr != nil {
+	email, err := httpx.FormValue(request, "email")
+	if err != nil {
 		handler.errorPage(
 			responseWriter,
 			http.StatusBadRequest,
@@ -113,11 +114,46 @@ func (handler *Handler) UpdateEmail(responseWriter http.ResponseWriter, request 
 		}
 		return
 	}
+
+	password, err := httpx.FormValue(request, "currentPassword")
+	if err != nil {
+		handler.errorPage(
+			responseWriter,
+			http.StatusForbidden,
+			"Invalid Request",
+			"Re-enter your current password to change your email.",
+		)
+		return
+	}
+	if password == "" {
+		if err := handler.renderPage(
+			responseWriter,
+			http.StatusForbidden,
+			current,
+			"Re-enter your current password to change your email.",
+		); err != nil {
+			handler.internalError(responseWriter, request, err)
+		}
+	}
+
+	if matched := passwords.Verify(password, current.User.PasswordHash); !matched {
+		if err := handler.renderPage(
+			responseWriter,
+			http.StatusForbidden,
+			current,
+			"Re-enter your current password to change your email.",
+		); err != nil {
+			handler.internalError(responseWriter, request, err)
+		}
+		return
+	}
+
 	existingUser, found, err := handler.accountStore.FindUserByEmail(request.Context(), email)
 	if err != nil {
 		handler.internalError(responseWriter, request, err)
 		return
 	}
+
 	if found && existingUser.ID != current.User.ID {
 		if err := handler.renderPage(
 			responseWriter,
@@ -129,6 +165,7 @@ func (handler *Handler) UpdateEmail(responseWriter http.ResponseWriter, request 
 		}
 		return
 	}
+
 	if err := handler.accountStore.UpdateEmail(
 		request.Context(),
 		current.User.ID,
