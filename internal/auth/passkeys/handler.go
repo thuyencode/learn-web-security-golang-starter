@@ -171,15 +171,15 @@ func (handler *Handler) CompleteLogin(responseWriter http.ResponseWriter, reques
 	}
 	sessionData := challenge.SessionData
 	sessionData.UserID = user.WebAuthnID()
-	var credential *webauthn.Credential
-	err = errors.New("passkey assertion validation is not implemented")
+	credential, err := handler.webauthn.ValidateLogin(user, sessionData, parsedResponse)
 	if err != nil {
 		_ = handler.logger.Event("passkey_login_failed", map[string]any{"credentialId": credentialID, "error": err.Error()})
-		if renderErr := handler.renderLogin(responseWriter, http.StatusUnauthorized, "Passkey verification failed.", returnTo); renderErr != nil {
-			handler.internalError(responseWriter, request, renderErr)
+		if err := handler.renderLogin(responseWriter, http.StatusUnauthorized, "Passkey verification failed.", returnTo); err != nil {
+			handler.internalError(responseWriter, request, err)
 		}
 		return
 	}
+
 	if err := handler.passkeys.UpdateCounter(request.Context(), *credential); err != nil {
 		handler.internalError(responseWriter, request, err)
 		return
