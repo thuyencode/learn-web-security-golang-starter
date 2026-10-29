@@ -55,7 +55,11 @@ func NewStore(database *sql.DB, keyring *storage.Keyring) *Store {
 	}
 }
 
-func (store *Store) StartEnrollment(ctx context.Context, userID int64, email string) (string, string, error) {
+func (store *Store) StartEnrollment(
+	ctx context.Context,
+	userID int64,
+	email string,
+) (string, string, error) {
 	key, err := totp.Generate(totp.GenerateOpts{
 		Issuer:      "Bearly Secure",
 		AccountName: email,
@@ -69,7 +73,12 @@ func (store *Store) StartEnrollment(ctx context.Context, userID int64, email str
 		return "", "", fmt.Errorf("generate TOTP secret: %w", err)
 	}
 	if store.keyring == nil {
-		if _, err := store.database.ExecContext(ctx, "UPDATE users SET pending_totp_secret = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", key.Secret(), userID); err != nil {
+		if _, err := store.database.ExecContext(
+			ctx,
+			"UPDATE users SET pending_totp_secret = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+			key.Secret(),
+			userID,
+		); err != nil {
 			return "", "", fmt.Errorf("store pending TOTP secret: %w", err)
 		}
 	} else {
@@ -91,7 +100,11 @@ func (store *Store) StartEnrollment(ctx context.Context, userID int64, email str
 	return key.Secret(), qrDataURL, nil
 }
 
-func (store *Store) PendingEnrollment(ctx context.Context, userID int64, email string) (string, string, bool, error) {
+func (store *Store) PendingEnrollment(
+	ctx context.Context,
+	userID int64,
+	email string,
+) (string, string, bool, error) {
 	secret, found, err := store.decryptSecret(ctx, userID, true)
 	if err != nil || !found {
 		return "", "", found, err
@@ -128,8 +141,32 @@ func verifyAt(code, secret string, timestamp time.Time) bool {
 	return err == nil && valid
 }
 
-func (store *Store) VerifyAndConsume(ctx context.Context, userID int64, code, secret string) (bool, error) {
-	return verifyAt(code, secret, store.now()), nil
+func (store *Store) VerifyAndConsume(
+	ctx context.Context,
+	userID int64,
+	code, secret string,
+) (bool, error) {
+	timestamp := store.now()
+
+	if !verifyAt(code, secret, timestamp) {
+		return false, nil
+	}
+
+	timestep := new(timestamp.Unix() / totpPeriodSeconds)
+	result, err := store.queries.ConsumeTOTPStep(ctx, dbgen.ConsumeTOTPStepParams{
+		UserID:   userID,
+		TimeStep: timestep,
+	})
+	if err != nil {
+		return false, fmt.Errorf("consume TOPT time step: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("count consume TOPT time steps: %w", err)
+	}
+
+	return rows == 1, nil
 }
 
 func (store *Store) ConfirmEnrollment(ctx context.Context, userID int64) ([]string, error) {
@@ -197,7 +234,11 @@ func (store *Store) Clear(ctx context.Context, userID int64) error {
 	return nil
 }
 
-func (store *Store) CreateChallenge(ctx context.Context, userID int64, returnTo string) (Challenge, error) {
+func (store *Store) CreateChallenge(
+	ctx context.Context,
+	userID int64,
+	returnTo string,
+) (Challenge, error) {
 	now := store.now().UTC()
 	if err := store.queries.PruneTOTPLoginChallenges(ctx, formatTimestamp(now)); err != nil {
 		return Challenge{}, fmt.Errorf("prune TOTP login challenges: %w", err)
@@ -251,10 +292,13 @@ func (store *Store) Challenge(ctx context.Context, token string) (Challenge, boo
 }
 
 func (store *Store) RecordChallengeFailure(ctx context.Context, token string) (bool, error) {
-	attemptsRemaining, err := store.queries.RecordTOTPLoginChallengeFailure(ctx, dbgen.RecordTOTPLoginChallengeFailureParams{
-		TokenHash: hashToken(token),
-		Now:       formatTimestamp(store.now().UTC()),
-	})
+	attemptsRemaining, err := store.queries.RecordTOTPLoginChallengeFailure(
+		ctx,
+		dbgen.RecordTOTPLoginChallengeFailureParams{
+			TokenHash: hashToken(token),
+			Now:       formatTimestamp(store.now().UTC()),
+		},
+	)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && attemptsRemaining <= 0) {
 		if deleteErr := store.DeleteChallenge(ctx, token); deleteErr != nil {
 			return false, deleteErr
@@ -277,9 +321,14 @@ func (store *Store) DeleteChallenge(ctx context.Context, token string) error {
 	return nil
 }
 
-func (store *Store) ConsumeBackupCode(ctx context.Context, userID int64, code string) (bool, error) {
+func (store *Store) ConsumeBackupCode(
+	ctx context.Context,
+	userID int64,
+	code string,
+) (bool, error) {
 	var count int
-	if err := store.database.QueryRowContext(ctx, "SELECT COUNT(*) FROM totp_backup_codes WHERE user_id = ? AND code_hash = ?", userID, hashToken(code)).Scan(&count); err != nil {
+	if err := store.database.QueryRowContext(ctx, "SELECT COUNT(*) FROM totp_backup_codes WHERE user_id = ? AND code_hash = ?", userID, hashToken(code)).
+		Scan(&count); err != nil {
 		return false, fmt.Errorf("find TOTP backup code: %w", err)
 	}
 	return count == 1, nil
@@ -290,17 +339,25 @@ func (store *Store) CountRecentRecoveryFailures(ctx context.Context, email strin
 	if err := store.queries.PruneMFARecoveryAttempts(ctx, cutoff); err != nil {
 		return 0, fmt.Errorf("prune MFA recovery attempts: %w", err)
 	}
-	count, err := store.queries.CountRecentMFARecoveryFailures(ctx, dbgen.CountRecentMFARecoveryFailuresParams{
-		Email:  email,
-		Cutoff: cutoff,
-	})
+	count, err := store.queries.CountRecentMFARecoveryFailures(
+		ctx,
+		dbgen.CountRecentMFARecoveryFailuresParams{
+			Email:  email,
+			Cutoff: cutoff,
+		},
+	)
 	if err != nil {
 		return 0, fmt.Errorf("count recent MFA recovery attempts: %w", err)
 	}
 	return count, nil
 }
 
-func (store *Store) RecordRecoveryAttempt(ctx context.Context, email string, userID *int64, succeeded bool) error {
+func (store *Store) RecordRecoveryAttempt(
+	ctx context.Context,
+	email string,
+	userID *int64,
+	succeeded bool,
+) error {
 	success := int64(0)
 	if succeeded {
 		success = 1
@@ -316,14 +373,19 @@ func (store *Store) RecordRecoveryAttempt(ctx context.Context, email string, use
 	return nil
 }
 
-func (store *Store) decryptSecret(ctx context.Context, userID int64, pending bool) (string, bool, error) {
+func (store *Store) decryptSecret(
+	ctx context.Context,
+	userID int64,
+	pending bool,
+) (string, bool, error) {
 	if store.keyring == nil {
 		column := "totp_secret"
 		if pending {
 			column = "pending_totp_secret"
 		}
 		var secret *string
-		err := store.database.QueryRowContext(ctx, "SELECT "+column+" FROM users WHERE id = ?", userID).Scan(&secret)
+		err := store.database.QueryRowContext(ctx, "SELECT "+column+" FROM users WHERE id = ?", userID).
+			Scan(&secret)
 		if errors.Is(err, sql.ErrNoRows) || secret == nil {
 			return "", false, nil
 		}
