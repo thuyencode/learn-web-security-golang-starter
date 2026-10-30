@@ -72,7 +72,7 @@ func (handler *Handler) Detail(responseWriter http.ResponseWriter, request *http
 		handler.internalError(responseWriter, request, err)
 		return
 	}
-	if !found {
+	if !found || current.Session.UserID != order.UserID {
 		handler.orderNotFound(responseWriter)
 		return
 	}
